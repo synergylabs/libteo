@@ -1,0 +1,8 @@
+namespace teo;
+
+table UtilFetchIpResponse {
+    ip:string;
+    port:int16;
+}
+
+root_type UtilFetchIpResponse;

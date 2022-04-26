@@ -1,0 +1,7 @@
+namespace teo;
+
+table UtilFetchIpRequest {
+    pubkey:[ubyte];
+}
+
+root_type UtilFetchIpRequest;

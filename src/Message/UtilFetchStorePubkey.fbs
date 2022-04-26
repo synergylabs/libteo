@@ -1,0 +1,7 @@
+namespace teo;
+
+table UtilFetchStorePubkey {
+    pubkey:[ubyte];
+}
+
+root_type UtilFetchStorePubkey;

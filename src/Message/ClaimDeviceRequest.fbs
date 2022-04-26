@@ -1,0 +1,9 @@
+namespace teo;
+
+table ClaimDeviceRequest {
+    nonce:[ubyte];
+    ciphertext:[ubyte];
+    group_mode:int32;
+}
+
+root_type ClaimDeviceRequest;

@@ -1,0 +1,8 @@
+namespace teo;
+
+table InitializationRequest {
+    setup_header:[ubyte];
+    ciphertext:[ubyte];
+}
+
+root_type InitializationRequest;

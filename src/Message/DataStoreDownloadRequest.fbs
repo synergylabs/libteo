@@ -1,0 +1,7 @@
+namespace teo.DataStoreDownload;
+
+table DataStoreDownloadRequest {
+    uuid:string;
+}
+
+root_type DataStoreDownloadRequest;

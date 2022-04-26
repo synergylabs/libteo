@@ -1,0 +1,7 @@
+namespace teo;
+
+table DataReencryptionResponse {
+    notification_token:[ubyte];
+}
+
+root_type DataReencryptionResponse;
