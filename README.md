@@ -72,6 +72,30 @@ This standalone test app demonstrates some basic TEO functinalities and crypto p
 
 ### Manual Exploration
 
+It is important that you start the following terminals/sessions/programs in the correct sequence. However, you do have some flexibility for exploration once the system is up and running (once user becomes an ephemeral owner).
+
+1. Start the storage server.
+   ```bash
+   # terminal 1
+   ./build/apps/storage
+   # Collect storage server's info
+   teo-storage> info 
+   ```
+2. Start the device program.
+   ```bash
+   # terminal 2
+   ./build/apps/device <storage-ip> <storage-port>
+   # Collect device's info for **admin**
+   teo-device> info admin
+   ```
+3. Start the admin program.
+    ```bash
+    # terminal 3
+    ./build/apps/admin <storage-ip> <storage-port> <device_pubkey> <device_secret>
+    # Attempt to initialize the targeted device
+    teo-admin> initDevice
+    ```
+
 ## Case Studies
 
 TEO integration with existing applications. They are designed for the Raspberry Pi 4 platform.

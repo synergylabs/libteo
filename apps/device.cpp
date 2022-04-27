@@ -20,7 +20,7 @@ static const size_t QR_CODE_WIDTH = 500;
 
 teo::SharedSecretKey setup_key;
 
-void *PrintDeviceDetail(void *dev_in)
+void *PrintDeviceDetail(void *dev_in, bool show_admin, bool show_user)
 {
 
     teo::Device *dev_ptr = (teo::Device *)dev_in;
@@ -49,15 +49,21 @@ void *PrintDeviceDetail(void *dev_in)
 
         if (admin_qr_output && user_qr_output)
         {
-            fmt::print("\nQR Code link for **admin**: https://api.qrserver.com/v1/create-qr-code/?size={}x{}&data={}\n\n",
-                       QR_CODE_WIDTH, QR_CODE_WIDTH, admin_qr_output);
-            auto admin_json_content = nlohmann::json::parse(admin_qr_content);
-            fmt::print("Admin QR contents: {}\n", admin_json_content.dump(4));
+            if (show_admin)
+            {
+                fmt::print("\nQR Code link for **admin**: https://api.qrserver.com/v1/create-qr-code/?size={}x{}&data={}\n\n",
+                           QR_CODE_WIDTH, QR_CODE_WIDTH, admin_qr_output);
+                auto admin_json_content = nlohmann::json::parse(admin_qr_content);
+                fmt::print("Admin QR contents: {}\n", admin_json_content.dump(4));
+            }
 
-            fmt::print("\nQR Code link for __user__: https://api.qrserver.com/v1/create-qr-code/?size={}x{}&data={}\n\n",
-                       QR_CODE_WIDTH, QR_CODE_WIDTH, user_qr_output);
-            auto user_json_content = nlohmann::json::parse(user_qr_content);
-            fmt::print("User QR contents: {}\n", user_json_content.dump(4));
+            if (show_user)
+            {
+                fmt::print("\nQR Code link for __user__: https://api.qrserver.com/v1/create-qr-code/?size={}x{}&data={}\n\n",
+                           QR_CODE_WIDTH, QR_CODE_WIDTH, user_qr_output);
+                auto user_json_content = nlohmann::json::parse(user_qr_content);
+                fmt::print("User QR contents: {}\n", user_json_content.dump(4));
+            }
 
             curl_free(admin_qr_output);
             curl_free(user_qr_output);
@@ -78,12 +84,39 @@ bool validate_storage_info(const teo::Device *dev)
 
 int main(int argc, char **argv)
 {
+    std::string storage_ip = "";
+    int storage_port = 0;
+
+    argparse::ArgumentParser program("TEO Device");
+
+    program.add_argument("storage_ip")
+        .help("IP address of the storage provider.");
+
+    program.add_argument("storage_port")
+        .help("Port number of the storage provider.")
+        .action([](const std::string &value)
+                { return std::stoi(value); });
+
+    try
+    {
+        program.parse_args(argc, argv);
+    }
+    catch (const std::runtime_error &err)
+    {
+        std::cout << err.what() << std::endl;
+        std::cout << program;
+        exit(0);
+    }
+
+    storage_ip = program.get("storage_ip");
+    storage_port = program.get<int>("storage_port");
+
     fmt::print("Running Device node...\n\n");
 
     teo::api_initialize();
 
     setup_key = teo::SharedSecretKey();
-    teo::Device dev(setup_key);
+    teo::Device dev(setup_key, storage_ip, storage_port);
 
     char *line;
     char *prgname = argv[0];
@@ -121,14 +154,30 @@ int main(int argc, char **argv)
             }
             else if (tokens[0] == "info")
             {
+                bool show_admin = true;
+                bool show_user = true;
+
+                if (tokens.size() > 1)
+                {
+                    if (tokens[1] == "admin")
+                    {
+                        show_admin = true;
+                        show_user = false;
+                    }
+                    else if (tokens[1] == "user")
+                    {
+                        show_admin = false;
+                        show_user = true;
+                    }
+                }
+
                 fmt::print("Current client state info:\n");
-                PrintDeviceDetail(&dev);
+                PrintDeviceDetail(&dev, show_admin, show_user);
             }
             else if (tokens[0] == "test")
             {
                 if (validate_storage_info(&dev))
                 {
-
                     fmt::print("Test storing hello-world...\n");
 
                     auto before = Clock::now();
