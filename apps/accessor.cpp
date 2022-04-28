@@ -14,7 +14,7 @@ const int SLEEP_INTERVAL = 500; // in milliseconds
 
 int main(int argc, char *argv[])
 {
-    argparse::ArgumentParser program("TOT Accessor");
+    argparse::ArgumentParser program("TEO Accessor");
 
     program.add_argument("storage_ip")
         .help("IP address of the storage provider.");
@@ -24,18 +24,13 @@ int main(int argc, char *argv[])
         .action([](const std::string &value)
                 { return std::stoi(value); });
 
-    program.add_argument("google_sheet_id")
-        .help("For result collection");
-
-    program.add_argument("apps_script_url")
-        .help("For result collection.");
-
-    program.add_argument("reps")
+    program.add_argument("--reps")
         .help("Test repetitions.")
+        .default_value(1)
         .action([](const std::string &value)
                 { return std::stoi(value); });
 
-    program.add_argument("data_block_UUID")
+    program.add_argument("metadata_UUID")
         .help("UUID for request.");
 
     try
@@ -49,16 +44,13 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    std::string sheet_id = program.get("google_sheet_id");
-    std::string sheet_script = program.get("apps_script_url");
-    int reps = program.get<int>("reps");
-    std::string data_block_uuid = program.get("data_block_UUID");
+    std::string metadata_uuid = program.get("metadata_UUID");
 
     std::string storage_ip = program.get("storage_ip");
     int storage_port = program.get<int>("storage_port");
 
-    fmt::print("Google sheet ID: {}\n", sheet_id);
-    fmt::print("Google script at: {}\n", sheet_script);
+    int reps = program.get<int>("--reps");
+    fmt::print("reps: {}\n", reps);
 
     fmt::print("\nRunning Accessor node...\n\n");
 
@@ -66,7 +58,7 @@ int main(int argc, char *argv[])
 
     teo::Accessor acc(storage_ip, storage_port);
 
-    teo::UUID dataUUID(data_block_uuid);
+    teo::UUID metadataUUID(metadata_uuid);
 
     std::string res = "";
     res += "sieve_dec_timer,sym_dec_timer,download_timer,total_timer\n";
@@ -78,27 +70,35 @@ int main(int argc, char *argv[])
 
         timer_start = std::chrono::high_resolution_clock::now();
 
-        try {
-        acc.request_access(dataUUID, "", false, false,
-                           &sieve_dec_timer, &sym_dec_timer, &download_timer);
-        
-        timer_stop = std::chrono::high_resolution_clock::now();
-        int total_timer = std::chrono::duration_cast<std::chrono::milliseconds>(timer_stop - timer_start).count();
+        try
+        {
+            if (acc.request_access(metadataUUID, "", (i != 0), false,
+                                   &sieve_dec_timer, &sym_dec_timer, &download_timer) != 0)
+            {
+                fmt::print("Access failed!! Exit prematurely!!!\n");
+                return -1;
+            }
 
-        res += fmt::format("{},{},{},{}\n",
-                           sieve_dec_timer,
-                           sym_dec_timer,
-                           download_timer,
-                           total_timer);
+            timer_stop = std::chrono::high_resolution_clock::now();
+            int total_timer = std::chrono::duration_cast<std::chrono::milliseconds>(timer_stop - timer_start).count();
+
+            res += fmt::format("{},{},{},{}\n",
+                               sieve_dec_timer,
+                               sym_dec_timer,
+                               download_timer,
+                               total_timer);
         }
-        catch (...) {
+        catch (...)
+        {
             fmt::print("encounter error...\n");
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_INTERVAL));
+        std::cout << "Press ENTER to continue to the next iteration using cached key..." << std::endl;
+        std::string tmp;
+        std::getline(std::cin, tmp);
     }
 
-    fmt::print("Result:\n\n{}", res);
+    fmt::print("Timer Result:\n{}", res);
 
     return 0;
 }

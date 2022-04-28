@@ -55,8 +55,9 @@ int main(int argc, char *argv[])
     teo::api_initialize();
 
     teo::User user(reinterpret_cast<const uint8_t *>(teo::base64_decode(admin_pubkey_b64).c_str()),
-                   "0.0.0.0", 9011, storage_ip, storage_port);
-
+                   "0.0.0.0", 9011,
+                   storage_ip, storage_port,
+                   true);
 
     // // Generate access certificate
     // const char msg[] = "authorized user";
@@ -115,6 +116,32 @@ int main(int argc, char *argv[])
             {
                 fmt::print("Claiming target device...\n");
                 user.claim_device(false, device_pubkey_b64);
+            }
+            else if (tokens[0] == "reencrypt")
+            {
+                bool malformat = false;
+                if (tokens.size() == 2)
+                {
+                    teo::UUID metadataUUID;
+                    try
+                    {
+                        metadataUUID = teo::UUID(tokens[1]);
+                        user.re_encrypt(metadataUUID);
+                    }
+                    catch (...)
+                    {
+                        malformat = true;
+                    }
+                }
+                else
+                {
+                    malformat = true;
+                }
+
+                if (malformat)
+                {
+                    fmt::print("Need to specify metadata UUID!\nTry type 'help'\n");
+                }
             }
 
             if (print_usage)

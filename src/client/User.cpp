@@ -8,14 +8,20 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <chrono>
-#include <iostream>
 #include <thread>
+
+#if defined(TEO_STANDALONE_APP)
+#include <iostream>
+#include <linenoise.h>
+#endif
 
 namespace teo
 {
     User::User(const uint8_t *admin_pubkey_in, const std::string &user_ip, short user_port,
-               const std::string &storage_ip, int storage_port)
+               const std::string &storage_ip, int storage_port, bool interactive)
     {
+        this->interactive = interactive;
+
         set_server_port(user_port);
         set_server_ip(user_ip);
 
@@ -243,7 +249,52 @@ namespace teo
     bool User::delegate_access(const UUID &sieve_uuid, const uint8_t *request_pubkey, size_t request_pubkey_len)
     {
         // FIXME: Add your custom access control code here
-        return true;
+        bool grant = true;
+#if defined(TEO_STANDALONE_APP)
+        if (interactive)
+        {
+            linenoisePause();
+
+            bool answer_valid = false;
+            std::string answer;
+
+            do
+            {
+                std::cout << "Do you want to grant this data access? [y/n]: ";
+                std::getline(std::cin, answer);
+
+                if (answer.length() == 0)
+                {
+                    // Empty line, enter pressed
+                    answer_valid = false;
+                }
+                else
+                {
+
+                    std::transform(answer.begin(), answer.end(), answer.begin(), ::tolower);
+
+                    answer_valid =
+                        (answer == "y") ||
+                        (answer == "n") ||
+                        (answer == "yes") ||
+                        (answer == "no");
+                }
+
+                if (!answer_valid || ((answer == "n") ||
+                                      (answer == "no")))
+                {
+                    grant = false;
+                }
+                else
+                {
+                    grant = true;
+                }
+            } while (!answer_valid);
+
+            linenoiseResume();
+        }
+#endif
+        return grant;
     }
 
     int User::re_encrypt(const UUID &block_uuid, const uint8_t *storage_pk)
@@ -266,13 +317,14 @@ namespace teo
             sieve_data_block_uuid = &metadata_sieve_lookup[block_uuid];
             metadata_uuid = &block_uuid;
         }
-        else {
+        else
+        {
             // block_uuid is the Sieve block
             // Try search for the metadata block UUID
             if (sieve_metadata_lookup.find(block_uuid) == sieve_metadata_lookup.end())
             {
                 LOGW("Corresponding metadata UUID not found");
-                return  -1;
+                return -1;
             }
 
             sieve_data_block_uuid = &block_uuid;

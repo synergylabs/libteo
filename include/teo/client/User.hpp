@@ -19,6 +19,8 @@ namespace teo
         static const int USER_THREAD_SERVER = 0;
         static const int MAX_RETRY = 10;
 
+        bool interactive;
+
         const int SLEEP_INTERVAL = 5; // in milliseconds (ms)
 
         uint8_t admin_pubkey[AsymmetricEncryptionKeySet::FULL_PK_SIZE];
@@ -38,7 +40,8 @@ namespace teo
                       const std::string &user_ip,
                       short user_port,
                       const std::string &storage_ip = default_device_ip,
-                      int storage_port = default_device_port);
+                      int storage_port = default_device_port,
+                      bool interactive = false);
 
         ~User();
 

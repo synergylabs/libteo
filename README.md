@@ -111,6 +111,32 @@ It is important that you start the following terminals/sessions/programs in the 
     # Next, claim the device
     teo-user> claimDevice
     ```
+5. Store data
+    ```bash 
+    # on terminal 2
+    # we provide two ways to store data (for tests)
+    teo-device> test  # stores a default Hello World file
+    # or
+    teo-device> store <full-path-to-file>
+    # After successfully storing the data, keep the UUID from terminal output as you will need it later
+    ```
+6. Request access 
+    ```bash
+    # terminal 5
+    ./build/apps/accessor <storage-ip> <storage-port> <metadata_UUID>
+    # go back to terminal 4
+    teo-user> Do you want to grant this data access? [y/n]: # type yes or no
+    # go back to terminal 5 and check the output
+    ```
+7. Re-encryption
+    ```bash
+    # at terminal 5 (or a new one) 
+    # set reps (n) > 1, as subsequent access will re-use cached key 
+    ./build/apps/accessor --reps <n> <storage-ip> <storage-port> <metadata_UUID>
+    # Whenever you want to revoke accessor's access, go to terminal 4
+    teo-user> reencrypt <metadata_UUID>
+    # afterwards, accessor's access will fail (ungracefully)
+    ```
 
 ## Case Studies
 

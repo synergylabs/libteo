@@ -810,10 +810,10 @@ namespace teo
             SieveDataBlock sieveData;
             memcpy(sieveData.data_key, &key_share[0], sizeof(sieveData.data_key));
 
-#if !defined(NDEBUG)
-            LOGV("Original sieveData:");
-            hexprint(sieveData.data_key, sizeof(sieveData.data_key), 1);
-#endif
+// #if !defined(NDEBUG)
+//             LOGV("Original sieveData:");
+//             hexprint(sieveData.data_key, sizeof(sieveData.data_key), 1);
+// #endif
 
             decaf::SecureBuffer encrypted_sieve_data;
             owner_sieve_keys[owner_key_b64].encrypt(reinterpret_cast<uint8_t *>(&sieveData),
@@ -987,6 +987,10 @@ namespace teo
         {
             *metadata_block_result = metadata_block_uuid;
         }
+
+#if !defined(NDEBUG)
+    LOGV("Successfully stored file into metadata UUID: %s", metadata_block_uuid.get_uuid().c_str());
+#endif
 
         return 0;
     }
