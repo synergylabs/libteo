@@ -135,7 +135,7 @@ It is important that you start the following terminals/sessions/programs in the 
     ./build/apps/accessor --reps <n> <storage-ip> <storage-port> <metadata_UUID>
     # Whenever you want to revoke accessor's access, go to terminal 4
     teo-user> reencrypt <metadata_UUID>
-    # afterwards, accessor's access will fail (ungracefully)
+    # afterwards, accessor's subsequent access will fail
     ```
 
 ## Case Studies
