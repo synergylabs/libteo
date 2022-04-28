@@ -30,14 +30,6 @@ FetchContent_Declare(json
 )
 FetchContent_MakeAvailable(json)
 
-
-FetchContent_Declare(linenoise
-  GIT_REPOSITORY https://github.com/zhanghan177/linenoise-cmake.git
-  GIT_TAG 6926db95d25fe4821b4a55c2f915b4c1ec3801ef 
-)
-FetchContent_MakeAvailable(linenoise)
-
-
 #####################################
 # Compile executables
 #####################################

@@ -7,7 +7,7 @@
 #include <iostream>
 #include <linenoise.h>
 #include <string>
-
+#include <thread>
 
 using std::cout;
 using std::endl;
@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
 
     teo::SharedSecretKey device_secret(teo::base64_decode(device_secret_b64_str));
 
-    teo::Admin admin(storage_ip, storage_port);
+    teo::Admin admin(storage_ip, storage_port, true);
 
     char *line;
     char *prgname = argv[0];
@@ -126,7 +126,7 @@ int main(int argc, char *argv[])
                 fmt::print("Current client state info:\n");
                 PrintAdminDetail(&admin);
             }
-            else if (tokens[0] == "initdevice")
+            else if (tokens[0] == "initdevice" || tokens[0] == "init")
             {
                 fmt::print("Initializing target device...\n");
                 admin.initialize_device(device_secret, device_pubkey_b64);

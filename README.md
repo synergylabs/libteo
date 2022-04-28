@@ -91,9 +91,25 @@ It is important that you start the following terminals/sessions/programs in the 
 3. Start the admin program.
     ```bash
     # terminal 3
-    ./build/apps/admin <storage-ip> <storage-port> <device_pubkey> <device_secret>
+    ./build/apps/admin <storage-ip> <storage-port> <device-pubkey> <device-secret>
     # Attempt to initialize the targeted device
     teo-admin> initDevice
+    ```
+4. Acquire pre-auth token and claim the device
+    ```bash 
+    # Obtain necessary information for user claim process
+    # back in terminal 2
+    teo-device> info user
+    # terminal 4
+    ./build/apps/user <storage-ip> <storage-port> <admin-pubkey> <device-pubkey>
+    # Acquire pre-auth token
+    teo-user> preauth
+    # back in terminal 3: admin needs approve this
+    teo-admin> Do you want to grant this user pre-auth token? [y/n]: # type yes or no
+    # back in termial 4
+    teo-user> # you should see confirmation message of pre-auth approval here
+    # Next, claim the device
+    teo-user> claimDevice
     ```
 
 ## Case Studies

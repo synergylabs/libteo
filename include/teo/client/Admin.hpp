@@ -15,10 +15,12 @@ namespace teo
     {
     private:
         static const int ADMIN_THREAD_SERVER = 0;
+        bool interactive;
 
     public:
         Admin(const std::string &storage_ip = default_device_ip,
-              int storage_port = default_device_port);
+              int storage_port = default_device_port,
+              bool interactive = false);
 
         ~Admin();
 

@@ -10,8 +10,11 @@
 namespace teo
 {
     Admin::Admin(const std::string &storage_ip,
-                 int storage_port)
+                 int storage_port,
+                 bool interactive)
     {
+        this->interactive = interactive;
+
         set_server_port(default_admin_port);
 
         set_storage_info(storage_ip, storage_port);
@@ -60,7 +63,8 @@ namespace teo
         network_read(connection, request_buf, sizeof(request_buf));
 
         return admin_process_pre_auth_token_impl(request_buf, connection,
-                                                 nullptr, nullptr, get_keyset());
+                                                 nullptr, nullptr, 
+                                                 get_keyset(), this->interactive);
     }
 
 }

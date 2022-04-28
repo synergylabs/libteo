@@ -1,5 +1,10 @@
 #include <cstring>
 
+#if defined(TEO_STANDALONE_APP)
+#include <iostream>
+#include <linenoise.h>
+#endif
+
 #include "teo/CipherType.hpp"
 #include "teo/SignatureType.hpp"
 #include "teo/teo_client_native.hpp"
@@ -128,8 +133,10 @@ namespace teo
                                           int connection,
                                           uint8_t *response_buf,
                                           int *response_len,
-                                          AsymmetricEncryptionKeySet &keySet)
+                                          AsymmetricEncryptionKeySet &keySet,
+                                          bool interactive)
     {
+        bool grant = true;
         auto request_msg = GetAcquirePreAuthTokenRequest(request_buf);
 
         SignaturePreAuthToken token_content;
@@ -141,24 +148,83 @@ namespace teo
                              reinterpret_cast<const unsigned char *>(&token_content),
                              sizeof(token_content));
 
-        LOGV("Event: Acquire pre auth token admin grant");
-        LOGV("Token content base64: %s", base64_encode(response_payload.token, sizeof(response_payload.token)).c_str());
-
-        uint8_t ciphertext_buf_len = AsymmetricEncryptionKeySet::get_box_easy_cipher_len(sizeof(response_payload));
-        auto ciphertext_buf = new uint8_t[ciphertext_buf_len];
-        uint8_t nonce[AsymmetricEncryptionKeySet::NONCE_SIZE];
-        keySet.box_easy(ciphertext_buf, ciphertext_buf_len, reinterpret_cast<const uint8_t *>(&response_payload),
-                        sizeof(response_payload), nonce, request_msg->user_pubkey()->Data());
-
-        flatbuffers::FlatBufferBuilder builder(G_FBS_SIZE);
-        auto nonce_obj = builder.CreateVector(nonce, sizeof(nonce));
-        auto ciphertext_obj = builder.CreateVector(ciphertext_buf, ciphertext_buf_len);
-        auto response_msg = CreateAcquirePreAuthTokenResponse(builder, nonce_obj, ciphertext_obj);
-        builder.Finish(response_msg);
-
 #if defined(TEO_STANDALONE_APP)
-        network_send_message_type(connection, MessageType_ACQUIRE_PRE_AUTH_TOKEN_RESPONSE);
-        network_send(connection, builder.GetBufferPointer(), builder.GetSize());
+        if (interactive)
+        {
+            linenoisePause();
+
+            bool answer_valid = false;
+            std::string answer;
+
+            do
+            {
+                std::cout << "Do you want to grant this user pre-auth token? [y/n]: ";
+                std::getline(std::cin, answer);
+
+                if (answer.length() == 0)
+                {
+                    // Empty line, enter pressed
+                    answer_valid = false;
+                }
+                else
+                {
+
+                    std::transform(answer.begin(), answer.end(), answer.begin(), ::tolower);
+
+                    answer_valid =
+                        (answer == "y") ||
+                        (answer == "n") ||
+                        (answer == "yes") ||
+                        (answer == "no");
+                }
+
+                if (!answer_valid || ((answer == "n") ||
+                                      (answer == "no")))
+                {
+                    grant = false;
+                }
+                else
+                {
+                    grant = true;
+                }
+            } while (!answer_valid);
+
+            linenoiseResume();
+        }
+#endif
+        flatbuffers::FlatBufferBuilder builder(G_FBS_SIZE);
+        uint8_t *ciphertext_buf = nullptr;
+
+        if (grant)
+        {
+            LOGV("Event: Acquire pre auth token admin grant");
+            LOGV("Token content base64: %s", base64_encode(response_payload.token, sizeof(response_payload.token)).c_str());
+
+            uint8_t ciphertext_buf_len = AsymmetricEncryptionKeySet::get_box_easy_cipher_len(sizeof(response_payload));
+            ciphertext_buf = new uint8_t[ciphertext_buf_len];
+            uint8_t nonce[AsymmetricEncryptionKeySet::NONCE_SIZE];
+            keySet.box_easy(ciphertext_buf, ciphertext_buf_len, reinterpret_cast<const uint8_t *>(&response_payload),
+                            sizeof(response_payload), nonce, request_msg->user_pubkey()->Data());
+
+            auto nonce_obj = builder.CreateVector(nonce, sizeof(nonce));
+            auto ciphertext_obj = builder.CreateVector(ciphertext_buf, ciphertext_buf_len);
+            auto response_msg = CreateAcquirePreAuthTokenResponse(builder, nonce_obj, ciphertext_obj);
+            builder.Finish(response_msg);
+        }
+        else
+        {
+            LOGV("Event: Acquire pre auth token admin DENIED!!!!");
+        }
+#if defined(TEO_STANDALONE_APP)
+        if (grant)
+        {
+            network_send_message_type(connection, MessageType_ACQUIRE_PRE_AUTH_TOKEN_RESPONSE);
+            network_send(connection, builder.GetBufferPointer(), builder.GetSize());
+        }
+        else
+        {
+            close(connection);
+        }
 #else  // TEO_STANDALONE_APP
         int response_type_len = network_send_message_type(0,
                                                           MessageType_ACQUIRE_PRE_AUTH_TOKEN_RESPONSE,
@@ -168,7 +234,10 @@ namespace teo
 
         *response_len = response_type_len + response_content_len;
 #endif // TEO_STANDALONE_APP
-        delete[] ciphertext_buf;
+        if (ciphertext_buf != nullptr)
+        {
+            delete[] ciphertext_buf;
+        }
 
         return 0;
     }

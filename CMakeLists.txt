@@ -116,6 +116,18 @@ FetchContent_MakeAvailable(Sodium)
 #         ${libdecaf_build_DIR}/src/libdecaf.a)
 # include_directories(${libdecaf_build_DIR}/src/GENERATED/include)
 
+
+#####################################
+# Require linenoise for demo app IO
+#####################################
+if (TEO_STANDALONE_APP)
+FetchContent_Declare(linenoise
+  GIT_REPOSITORY https://github.com/zhanghan177/linenoise-cmake.git
+  GIT_TAG 440e89784f1792e3b725be2c2860507f4089bb21 
+)
+FetchContent_MakeAvailable(linenoise)
+endif()
+
 #####################################
 # TEO main library
 #####################################

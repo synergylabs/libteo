@@ -4,6 +4,7 @@
 #include <string>
 #include <iostream>
 #include <curl/curl.h>
+#include <linenoise.h>
 
 using std::cout;
 using std::endl;
@@ -54,26 +55,78 @@ int main(int argc, char *argv[])
     teo::api_initialize();
 
     teo::User user(reinterpret_cast<const uint8_t *>(teo::base64_decode(admin_pubkey_b64).c_str()),
-                      "0.0.0.0", 9011, storage_ip, storage_port);
+                   "0.0.0.0", 9011, storage_ip, storage_port);
 
-    user.acquire_pre_auth_token();
-    user.claim_device(false, device_pubkey_b64);
 
-    fmt::print("Finish claiming\n");
+    // // Generate access certificate
+    // const char msg[] = "authorized user";
+    // size_t msg_len = sizeof(msg);
+    // uint8_t *cert = nullptr;
+    // size_t cert_len = 0;
+    // user.sign_access_cert(reinterpret_cast<const uint8_t *>(msg), msg_len, &cert, &cert_len);
+    // string msg_b64 = teo::base64_encode(reinterpret_cast<const uint8_t *>(msg), msg_len);
+    // string cert_b64 = teo::base64_encode(cert, cert_len);
 
-    // Generate access certificate
-    const char msg[] = "authorized user";
-    size_t msg_len = sizeof(msg);
-    uint8_t *cert = nullptr;
-    size_t cert_len = 0;
-    user.sign_access_cert(reinterpret_cast<const uint8_t *>(msg), msg_len, &cert, &cert_len);
-    string msg_b64 = teo::base64_encode(reinterpret_cast<const uint8_t *>(msg), msg_len);
-    string cert_b64 = teo::base64_encode(cert, cert_len);
+    // fmt::print("Msg content: {}\n", msg_b64);
+    // fmt::print("Cert content: {}\n", cert_b64);
 
-    fmt::print("Msg content: {}\n", msg_b64);
-    fmt::print("Cert content: {}\n", cert_b64);
+    // user.wait_all();
 
-    user.wait_all();
+    char *line;
+    char *prgname = argv[0];
+
+    std::string node_prefix = "teo-user";
+    std::string history = node_prefix + "-history.txt";
+    linenoiseHistoryLoad(history.c_str()); /* Load the history at startup */
+
+    while ((line = linenoise((node_prefix + "> ").c_str())) != NULL)
+    {
+        /* Do something with the string. */
+        if (line[0] != '\0')
+        {
+#if !defined(NDEBUG)
+            printf("[debug] echo: '%s'\n", line);
+#endif
+
+            std::string full_line(line);
+            std::transform(full_line.begin(), full_line.end(), full_line.begin(),
+                           [](unsigned char c)
+                           { return std::tolower(c); });
+            std::istringstream iss(full_line);
+            std::vector<std::string> tokens{std::istream_iterator<std::string>{iss},
+                                            std::istream_iterator<std::string>{}};
+
+            bool print_usage = false;
+            assert(tokens.size() > 0);
+            if (tokens[0] == "exit")
+            {
+                return 0;
+            }
+            else if (tokens[0] == "help")
+            {
+                print_usage = true;
+            }
+            else if (tokens[0] == "preauth")
+            {
+                fmt::print("Seeking pre-auth token from admin...\n");
+                user.acquire_pre_auth_token();
+            }
+            else if (tokens[0] == "claimdevice" || tokens[0] == "claim")
+            {
+                fmt::print("Claiming target device...\n");
+                user.claim_device(false, device_pubkey_b64);
+            }
+
+            if (print_usage)
+            {
+                // TODO: print usage
+            }
+
+            linenoiseHistoryAdd(line);             /* Add to the history. */
+            linenoiseHistorySave(history.c_str()); /* Save the history on disk. */
+        }
+        free(line);
+    }
 
     return 0;
 }

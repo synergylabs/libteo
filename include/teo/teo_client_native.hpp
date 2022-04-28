@@ -15,7 +15,8 @@ namespace teo
                                           int connection,
                                           uint8_t *response_buf,
                                           int *response_len,
-                                          AsymmetricEncryptionKeySet &keySet);
+                                          AsymmetricEncryptionKeySet &keySet,
+                                          bool interactive = false);
 
     int user_acquire_pre_auth_token_impl(const char *admin_ip_load, const int admin_port_in,
                                          const uint8_t *admin_pubkey,
