@@ -97,7 +97,7 @@ namespace teo
 
         SieveKey sieve_key;
 
-        uint8_t request_pubkey[AsymmetricEncryptionKeySet::FULL_PK_SIZE];
+        uint8_t request_pubkey[AsymmetricEncryptionKeySet::FULL_PK_SIZE]{};
 
         int err = user_process_sieve_cred_request_impl(request_buf,
                                                        connection,
