@@ -94,55 +94,27 @@ namespace teo
     {
         uint8_t request_buf[READ_BUFFER_SIZE];
         network_read(connection, request_buf, sizeof(request_buf));
-        auto request_msg = GetDataStoreSieveCredRequest(request_buf);
-
-        CiphertextDataStoreSieveCredRequest request_payload;
-        get_keyset().box_open_easy(reinterpret_cast<uint8_t *>(&request_payload), sizeof(request_payload),
-                                   request_msg->ciphertext()->Data(), request_msg->ciphertext()->size(),
-                                   request_msg->session_nonce()->Data(), request_msg->device_pubkey()->data());
-
-        if (request_payload.type != CipherType::data_store_sieve_cred_request)
-        {
-            LOGW("Unexpected cred request type");
-            return -1;
-        }
-
-        // SharedSecretKey session_key(request_payload.session_key, sizeof(request_payload.session_key));
-
-        if (memcmp(claimed_device, request_msg->device_pubkey()->Data(), sizeof(claimed_device)) != 0)
-        {
-            LOGW("Didn't claim this device before. Abort.");
-            return -1;
-        }
 
         SieveKey sieve_key;
 
-        CiphertextDataStoreSieveCredResponse response_payload;
-        response_payload.type = CipherType::data_store_sieve_cred_response;
-        sieve_key.serialize_key_into(response_payload.sieve_key, sizeof(response_payload.sieve_key));
-        sieve_key.serialize_nonce_into(response_payload.sieve_nonce, sizeof(response_payload.sieve_nonce));
+        uint8_t request_pubkey[AsymmetricEncryptionKeySet::FULL_PK_SIZE];
 
-        size_t response_cipher_len = get_keyset().get_box_easy_cipher_len(sizeof(response_payload));
-        auto response_cipher = new uint8_t[response_cipher_len]{};
-        // session_key.encrypt(response_cipher, response_cipher_len,
-        //                     reinterpret_cast<uint8_t *>(&response_payload),
-        //                     sizeof(response_payload));
-        uint8_t nonce[AsymmetricEncryptionKeySet::NONCE_SIZE];
-        get_keyset().box_easy(response_cipher, response_cipher_len,
-                              reinterpret_cast<uint8_t *>(&response_payload), sizeof(response_payload),
-                              nonce, request_msg->device_pubkey()->data());
+        int err = user_process_sieve_cred_request_impl(request_buf,
+                                                       connection,
+                                                       nullptr,
+                                                       nullptr,
+                                                       get_keyset(),
+                                                       sieve_key,
+                                                       claimed_device,
+                                                       sizeof(claimed_device),
+                                                       request_pubkey,
+                                                       sizeof(request_pubkey));
 
-        flatbuffers::FlatBufferBuilder builder(G_FBS_SIZE);
-        // auto response_session_header_obj = builder.CreateVector(session_key.get_header(),
-        //                                                         SharedSecretKey::HEADER_SIZE);
-        auto response_session_header_obj = builder.CreateVector(nonce, sizeof(nonce));
-        auto response_cipher_obj = builder.CreateVector(response_cipher, response_cipher_len);
-        auto response_msg = CreateDataStoreSieveCredResponse(builder, response_session_header_obj,
-                                                             response_cipher_obj);
-        builder.Finish(response_msg);
-
-        network_send_message_type(connection, MessageType_DATA_STORE_SIEVE_CRED_RESPONSE);
-        network_send(connection, builder.GetBufferPointer(), builder.GetSize());
+        if (err != 0)
+        {
+            LOGW("Error handling Sieve credential request");
+            return -1;
+        }
 
         if (network_read_message_type(connection) != MessageType_DATA_STORE_UPLOAD_NOTIFICATION)
         {
@@ -152,30 +124,20 @@ namespace teo
 
         uint8_t notification_buf[READ_BUFFER_SIZE];
         network_read(connection, notification_buf, sizeof(notification_buf));
-        auto notification_msg = DataStoreUpload::GetDataStoreUploadNotification(notification_buf);
 
-        // session_key.load_header_decryption(notification_msg->session_header_refresh()->Data(),
-        //                                    notification_msg->session_header_refresh()->size());
-        CiphertextDataStoreUploadNotification notification_payload;
-        // session_key.decrypt(reinterpret_cast<uint8_t *>(&notification_payload), sizeof(notification_payload),
-        //                     notification_msg->ciphertext()->Data(), notification_msg->ciphertext()->size());
-        get_keyset().box_open_easy(reinterpret_cast<uint8_t *>(&notification_payload),
-                                   sizeof(notification_payload),
-                                   notification_msg->ciphertext()->data(),
-                                   notification_msg->ciphertext()->size(),
-                                   notification_msg->session_nonce_notification()->data(),
-                                   request_msg->device_pubkey()->data());
+        UUID metadata_UUID;
+        UUID sieve_data_UUID;
 
-        if (notification_payload.type != CipherType::data_store_upload_notification)
-        {
-            LOGW("Unexpected data store notification type");
+        err = user_process_upload_notification_impl(notification_buf,
+                                                    request_pubkey,
+                                                    get_keyset(),
+                                                    metadata_UUID,
+                                                    sieve_data_UUID);
+
+        if (err != 0) {
+            LOGW("Fail to process device's data upload notification!");
             return -1;
         }
-
-        UUID metadata_UUID = UUID(notification_payload.metadata_block_uuid,
-                                  sizeof(notification_payload.metadata_block_uuid));
-        UUID sieve_data_UUID = UUID(notification_payload.sieve_data_uuid,
-                                    sizeof(notification_payload.sieve_data_uuid));
 
         // Store session key and ID for later use...
         sieve_data_key_lookup[sieve_data_UUID] = sieve_key;

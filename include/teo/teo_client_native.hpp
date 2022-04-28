@@ -3,6 +3,8 @@
 #define TEO_TEO_CLIENT_NATIVE_H
 
 #include "PreAuthToken.hpp"
+#include "Sieve.hpp"
+#include "SharedSecretKey.hpp"
 
 namespace teo
 {
@@ -26,6 +28,23 @@ namespace teo
     int user_claim_device_impl(AsymmetricEncryptionKeySet &userKeySet, PreAuthToken &pre_auth_token,
                                const char *device_ip_load, const int device_port_in, const uint8_t *admin_pubkey,
                                bool exclusive, uint8_t *claimed_device, size_t claimed_device_len);
+
+    int user_process_sieve_cred_request_impl(uint8_t *request_buf,
+                                             int connection,
+                                             uint8_t *response_buf,
+                                             int *response_len,
+                                             AsymmetricEncryptionKeySet &keySet,
+                                             SieveKey &sieve_key,
+                                             uint8_t *claimed_device,
+                                             size_t claimed_device_len,
+                                             uint8_t *request_pubkey,
+                                             size_t request_pubkey_len);
+
+    int user_process_upload_notification_impl(uint8_t *notification_buf,
+                                              uint8_t *request_pubkey,
+                                              AsymmetricEncryptionKeySet &keySet,
+                                              UUID &metadata_UUID,
+                                              UUID &sieve_data_UUID);
 
     int client_register_ip_kms_impl(const uint8_t *client_pubkey, size_t client_pubkey_len,
                                     const char *client_ip_load, const int client_port_in,

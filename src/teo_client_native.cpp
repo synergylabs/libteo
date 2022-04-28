@@ -408,6 +408,105 @@ namespace teo
         return 0;
     }
 
+    int user_process_sieve_cred_request_impl(uint8_t *request_buf,
+                                             int connection,
+                                             uint8_t *response_buf,
+                                             int *response_len,
+                                             AsymmetricEncryptionKeySet &keySet,
+                                             SieveKey &sieve_key,
+                                             uint8_t *claimed_device,
+                                             size_t claimed_device_len,
+                                             uint8_t *request_pubkey,
+                                             size_t request_pubkey_len)
+    {
+        auto request_msg = GetDataStoreSieveCredRequest(request_buf);
+
+        CiphertextDataStoreSieveCredRequest request_payload;
+        keySet.box_open_easy(reinterpret_cast<uint8_t *>(&request_payload), sizeof(request_payload),
+                             request_msg->ciphertext()->Data(), request_msg->ciphertext()->size(),
+                             request_msg->session_nonce()->Data(), request_msg->device_pubkey()->data());
+
+        if (request_payload.type != CipherType::data_store_sieve_cred_request)
+        {
+            LOGW("Unexpected cred request type");
+            return -1;
+        }
+
+        if (memcmp(claimed_device, request_msg->device_pubkey()->Data(), claimed_device_len) != 0)
+        {
+            LOGW("Didn't claim this device before. Abort.");
+            return -1;
+        }
+
+        sieve_key = SieveKey();
+
+        CiphertextDataStoreSieveCredResponse response_payload;
+        response_payload.type = CipherType::data_store_sieve_cred_response;
+        sieve_key.serialize_key_into(response_payload.sieve_key, sizeof(response_payload.sieve_key));
+        sieve_key.serialize_nonce_into(response_payload.sieve_nonce, sizeof(response_payload.sieve_nonce));
+
+        size_t response_cipher_len = keySet.get_box_easy_cipher_len(sizeof(response_payload));
+        auto response_cipher = new uint8_t[response_cipher_len]{};
+        uint8_t nonce[AsymmetricEncryptionKeySet::NONCE_SIZE];
+        keySet.box_easy(response_cipher, response_cipher_len,
+                        reinterpret_cast<uint8_t *>(&response_payload), sizeof(response_payload),
+                        nonce, request_msg->device_pubkey()->data());
+
+        flatbuffers::FlatBufferBuilder builder(G_FBS_SIZE);
+        auto response_session_header_obj = builder.CreateVector(nonce, sizeof(nonce));
+        auto response_cipher_obj = builder.CreateVector(response_cipher, response_cipher_len);
+        auto response_msg = CreateDataStoreSieveCredResponse(builder, response_session_header_obj,
+                                                             response_cipher_obj);
+        builder.Finish(response_msg);
+
+        memcpy(request_pubkey, request_msg->device_pubkey()->data(), request_pubkey_len);
+
+#if defined(TEO_STANDALONE_APP)
+        network_send_message_type(connection, MessageType_DATA_STORE_SIEVE_CRED_RESPONSE);
+        network_send(connection, builder.GetBufferPointer(), builder.GetSize());
+#else  // TEO_STANDALONE_APP
+        int response_type_len = network_send_message_type(0,
+                                                          MessageType_DATA_STORE_SIEVE_CRED_RESPONSE,
+                                                          response_buf);
+        int response_content_len = network_send(0, builder.GetBufferPointer(), builder.GetSize(),
+                                                SOCKET_SEND_FLAGS, response_buf + response_type_len);
+
+        *response_len = response_type_len + response_content_len;
+#endif // TEO_STANDALONE_APP
+
+        return 0;
+    }
+
+    int user_process_upload_notification_impl(uint8_t *notification_buf,
+                                              uint8_t *request_pubkey,
+                                              AsymmetricEncryptionKeySet &keySet,
+                                              UUID &metadata_UUID,
+                                              UUID &sieve_data_UUID)
+    {
+        auto notification_msg = DataStoreUpload::GetDataStoreUploadNotification(notification_buf);
+
+        CiphertextDataStoreUploadNotification notification_payload;
+        keySet.box_open_easy(reinterpret_cast<uint8_t *>(&notification_payload),
+                             sizeof(notification_payload),
+                             notification_msg->ciphertext()->data(),
+                             notification_msg->ciphertext()->size(),
+                             notification_msg->session_nonce_notification()->data(),
+                             request_pubkey);
+
+        if (notification_payload.type != CipherType::data_store_upload_notification)
+        {
+            LOGW("Unexpected data store notification type");
+            return -1;
+        }
+
+        metadata_UUID = UUID(notification_payload.metadata_block_uuid,
+                             sizeof(notification_payload.metadata_block_uuid));
+        sieve_data_UUID = UUID(notification_payload.sieve_data_uuid,
+                               sizeof(notification_payload.sieve_data_uuid));
+
+        return 0;
+    }
+
     int client_register_ip_kms_impl(const uint8_t *client_pubkey, size_t client_pubkey_len,
                                     const char *client_ip_load, const int client_port_in,
                                     const char *storage_ip_load, const int storage_port_in)
