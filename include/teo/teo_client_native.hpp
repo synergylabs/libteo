@@ -5,6 +5,7 @@
 #include "PreAuthToken.hpp"
 #include "Sieve.hpp"
 #include "SharedSecretKey.hpp"
+#include "CipherType.hpp"
 
 namespace teo
 {
@@ -45,6 +46,20 @@ namespace teo
                                               AsymmetricEncryptionKeySet &keySet,
                                               UUID &metadata_UUID,
                                               UUID &sieve_data_UUID);
+
+    int user_process_data_access_fetch_1_impl(uint8_t *fetch_buf,
+                                              AsymmetricEncryptionKeySet &keySet,
+                                              CiphertextDataAccessFetch &fetch_payload,
+                                              uint8_t *accessor_pubkey,
+                                              size_t accessor_pubkey_len);
+
+    int user_process_data_access_fetch_2_impl(int connection,
+                                              uint8_t *response_buf,
+                                              int *response_len,
+                                              AsymmetricEncryptionKeySet &keySet,
+                                              SieveKey &sieve_key,
+                                              CiphertextDataAccessFetch &fetch_payload,
+                                              uint8_t *accessor_pubkey);
 
     int client_register_ip_kms_impl(const uint8_t *client_pubkey, size_t client_pubkey_len,
                                     const char *client_ip_load, const int client_port_in,

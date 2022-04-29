@@ -507,6 +507,78 @@ namespace teo
         return 0;
     }
 
+    int user_process_data_access_fetch_1_impl(uint8_t *fetch_buf,
+                                              AsymmetricEncryptionKeySet &keySet,
+                                              CiphertextDataAccessFetch &fetch_payload,
+                                              uint8_t *accessor_pubkey,
+                                              size_t accessor_pubkey_len)
+    {
+        auto fetch_msg = GetDataAccessFetch(fetch_buf);
+
+        keySet.box_open_easy(reinterpret_cast<uint8_t *>(&fetch_payload), sizeof(fetch_payload),
+                             fetch_msg->ciphertext()->data(), fetch_msg->ciphertext()->size(),
+                             fetch_msg->message_nonce()->data(), fetch_msg->accessor_pubkey()->data());
+
+        if (fetch_payload.type != CipherType::data_access_fetch)
+        {
+            LOGW("Wrong fetch request type");
+            return -1;
+        }
+
+        if (accessor_pubkey_len != fetch_msg->accessor_pubkey()->size())
+        {
+            LOGW("Mismatch accessor pubkey buffer length!");
+            return -1;
+        }
+
+        memcpy(accessor_pubkey, fetch_msg->accessor_pubkey()->data(), fetch_msg->accessor_pubkey()->size());
+
+        return 0;
+    }
+
+    int user_process_data_access_fetch_2_impl(int connection,
+                                              uint8_t *response_buf,
+                                              int *response_len,
+                                              AsymmetricEncryptionKeySet &keySet,
+                                              SieveKey &sieve_key,
+                                              CiphertextDataAccessFetch &fetch_payload,
+                                              uint8_t *accessor_pubkey)
+    {
+
+        CiphertextDataAccessResponse response;
+        response.type = CipherType::data_access_response;
+        sieve_key.serialize_key_into(response.sieve_key, sizeof(response.sieve_key));
+        memcpy(response.random_challenge_response,
+               fetch_payload.random_challenge,
+               sizeof(fetch_payload.random_challenge));
+
+        uint8_t msg_nonce[AsymmetricEncryptionKeySet::NONCE_SIZE]{};
+
+        size_t cipher_len = AsymmetricEncryptionKeySet::get_box_easy_cipher_len(sizeof(response));
+        auto cipher = new uint8_t[cipher_len]{};
+        keySet.box_easy(cipher, cipher_len, reinterpret_cast<const uint8_t *>(&response),
+                        sizeof(response), msg_nonce, accessor_pubkey);
+
+        flatbuffers::FlatBufferBuilder builder(G_FBS_SIZE);
+        auto msg_nonce_obj = builder.CreateVector(msg_nonce, sizeof(msg_nonce));
+        auto ciphertext_obj = builder.CreateVector(cipher, cipher_len);
+        auto response_msg = CreateDataAccessResponse(builder, msg_nonce_obj, ciphertext_obj);
+        builder.Finish(response_msg);
+
+#if defined(TEO_STANDALONE_APP)
+        network_send_message_type(connection, MessageType_DATA_ACCESS_RESPONSE);
+        network_send(connection, builder.GetBufferPointer(), builder.GetSize());
+#else  // TEO_STANDALONE_APP
+        int response_type_len = network_send_message_type(0,
+                                                          MessageType_DATA_ACCESS_RESPONSE,
+                                                          response_buf);
+        int response_content_len = network_send(0, builder.GetBufferPointer(), builder.GetSize(),
+                                                SOCKET_SEND_FLAGS, response_buf + response_type_len);
+
+        *response_len = response_type_len + response_content_len;
+#endif // TEO_STANDALONE_APP
+    }
+
     int client_register_ip_kms_impl(const uint8_t *client_pubkey, size_t client_pubkey_len,
                                     const char *client_ip_load, const int client_port_in,
                                     const char *storage_ip_load, const int storage_port_in)

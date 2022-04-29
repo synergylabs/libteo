@@ -134,7 +134,8 @@ namespace teo
                                                     metadata_UUID,
                                                     sieve_data_UUID);
 
-        if (err != 0) {
+        if (err != 0)
+        {
             LOGW("Fail to process device's data upload notification!");
             return -1;
         }
@@ -152,16 +153,18 @@ namespace teo
         // Construct request input
         uint8_t fetch_buf[READ_BUFFER_SIZE]{};
         network_read(conn, fetch_buf, sizeof(fetch_buf));
-        auto fetch_msg = GetDataAccessFetch(fetch_buf);
 
         CiphertextDataAccessFetch fetch_payload;
-        get_keyset().box_open_easy(reinterpret_cast<uint8_t *>(&fetch_payload), sizeof(fetch_payload),
-                                   fetch_msg->ciphertext()->data(), fetch_msg->ciphertext()->size(),
-                                   fetch_msg->message_nonce()->data(), fetch_msg->accessor_pubkey()->data());
+        uint8_t accessor_pubkey[AsymmetricEncryptionKeySet::FULL_PK_SIZE]{};
 
-        if (fetch_payload.type != CipherType::data_access_fetch)
+        int err = user_process_data_access_fetch_1_impl(fetch_buf,
+                                                        get_keyset(),
+                                                        fetch_payload,
+                                                        accessor_pubkey,
+                                                        sizeof(accessor_pubkey));
+        if (err != 0)
         {
-            LOGW("Wrong fetch request type");
+            LOGW("Error processing fetch request payload");
             return -1;
         }
 
@@ -169,8 +172,8 @@ namespace teo
                         sizeof(fetch_payload.sieve_data_block_uuid));
 
         if (!delegate_access(sieve_uuid,
-                             fetch_msg->accessor_pubkey()->data(),
-                             fetch_msg->accessor_pubkey()->size()))
+                             accessor_pubkey,
+                             sizeof(accessor_pubkey)))
         {
             LOGI("Access denied");
             return -1;
@@ -182,28 +185,13 @@ namespace teo
             return -1;
         }
 
-        CiphertextDataAccessResponse response;
-        response.type = CipherType::data_access_response;
-        sieve_data_key_lookup[sieve_uuid].serialize_key_into(response.sieve_key, sizeof(response.sieve_key));
-        memcpy(response.random_challenge_response,
-               fetch_payload.random_challenge,
-               sizeof(fetch_payload.random_challenge));
-
-        uint8_t msg_nonce[AsymmetricEncryptionKeySet::NONCE_SIZE]{};
-
-        size_t cipher_len = AsymmetricEncryptionKeySet::get_box_easy_cipher_len(sizeof(response));
-        auto cipher = new uint8_t[cipher_len]{};
-        get_keyset().box_easy(cipher, cipher_len, reinterpret_cast<const uint8_t *>(&response),
-                              sizeof(response), msg_nonce, fetch_msg->accessor_pubkey()->data());
-
-        flatbuffers::FlatBufferBuilder builder(G_FBS_SIZE);
-        auto msg_nonce_obj = builder.CreateVector(msg_nonce, sizeof(msg_nonce));
-        auto ciphertext_obj = builder.CreateVector(cipher, cipher_len);
-        auto response_msg = CreateDataAccessResponse(builder, msg_nonce_obj, ciphertext_obj);
-        builder.Finish(response_msg);
-
-        network_send_message_type(conn, MessageType_DATA_ACCESS_RESPONSE);
-        network_send(conn, builder.GetBufferPointer(), builder.GetSize());
+        user_process_data_access_fetch_2_impl(conn,
+                                              nullptr,
+                                              nullptr,
+                                              get_keyset(),
+                                              sieve_data_key_lookup[sieve_uuid],
+                                              fetch_payload,
+                                              accessor_pubkey);
 
         return 0;
     }
