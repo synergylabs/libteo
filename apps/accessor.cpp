@@ -65,6 +65,13 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < reps; i++)
     {
+        if (i > 0)
+        {
+            std::cout << "Press ENTER to continue to the next iteration using cached key..." << std::endl;
+            std::string tmp;
+            std::getline(std::cin, tmp);
+        }
+
         int sieve_dec_timer, sym_dec_timer, download_timer;
         std::chrono::high_resolution_clock::time_point timer_start, timer_stop;
 
@@ -92,10 +99,6 @@ int main(int argc, char *argv[])
         {
             fmt::print("encounter error...\n");
         }
-
-        std::cout << "Press ENTER to continue to the next iteration using cached key..." << std::endl;
-        std::string tmp;
-        std::getline(std::cin, tmp);
     }
 
     fmt::print("Timer Result:\n{}", res);

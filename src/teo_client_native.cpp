@@ -577,6 +577,7 @@ namespace teo
 
         *response_len = response_type_len + response_content_len;
 #endif // TEO_STANDALONE_APP
+        return 0;
     }
 
     int client_register_ip_kms_impl(const uint8_t *client_pubkey, size_t client_pubkey_len,
