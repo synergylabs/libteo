@@ -1127,6 +1127,7 @@ namespace teo
                 real_time_perm[owner_pk_b64] = response_msg->granted();
                 data_lock.unlock();
             }
+            return 0;
         };
 
         std::vector<std::thread *> fetch_owner_perm_t;

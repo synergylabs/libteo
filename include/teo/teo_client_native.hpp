@@ -61,6 +61,14 @@ namespace teo
                                               CiphertextDataAccessFetch &fetch_payload,
                                               uint8_t *accessor_pubkey);
 
+    int user_re_encrypt_impl(const UUID &metadata_uuid,
+                             const UUID &sieve_data_uuid,
+                             RekeyToken &token,
+                             const uint8_t *storage_pk,
+                             const char *storage_ip,
+                             uint16_t storage_port,
+                             AsymmetricEncryptionKeySet &keySet);
+
     int client_register_ip_kms_impl(const uint8_t *client_pubkey, size_t client_pubkey_len,
                                     const char *client_ip_load, const int client_port_in,
                                     const char *storage_ip_load, const int storage_port_in);

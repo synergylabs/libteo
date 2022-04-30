@@ -580,6 +580,156 @@ namespace teo
         return 0;
     }
 
+    int user_re_encrypt_impl(const UUID &metadata_uuid,
+                             const UUID &sieve_data_uuid,
+                             RekeyToken &token,
+                             const uint8_t *storage_pk,
+                             const char *storage_ip,
+                             uint16_t storage_port,
+                             AsymmetricEncryptionKeySet &keySet)
+    {
+        uint8_t user_pubkey[AsymmetricEncryptionKeySet::FULL_PK_SIZE]{};
+        keySet.get_full_pk(user_pubkey, sizeof(user_pubkey));
+
+        const uint8_t *dynamic_pk = storage_pk;
+        if (dynamic_pk == nullptr)
+        {
+            // Fetch storage's public key through out-of-band trusted KMS
+            int conn = network_connect(storage_ip, storage_port);
+            network_send_message_type(conn, MessageType_UTIL_FETCH_STORE_PUBKEY);
+            uint8_t store_pk_buf[READ_BUFFER_SIZE]{};
+            network_read(conn, store_pk_buf, sizeof(store_pk_buf));
+            auto msg = GetUtilFetchStorePubkey(store_pk_buf);
+            auto buf = new uint8_t[AsymmetricEncryptionKeySet::FULL_PK_SIZE]{};
+            memcpy(buf, msg->pubkey()->data(), AsymmetricEncryptionKeySet::FULL_PK_SIZE);
+            dynamic_pk = buf;
+        }
+
+        flatbuffers::FlatBufferBuilder builder(G_FBS_SIZE);
+        size_t cipher_len = 0;
+        uint8_t *cipher = nullptr;
+        int conn = network_connect(storage_ip, storage_port);
+
+        /**
+         * Negotiate pre-request to prevent replay attack
+         */
+        // Send pre request
+        CiphertextDataReencryptionPreRequest pre_req_payload;
+        pre_req_payload.type = CipherType::data_reencryption_pre_request;
+        memcpy(pre_req_payload.sieve_data_block_uuid,
+               sieve_data_uuid.get_uuid().c_str(),
+               sizeof(pre_req_payload.sieve_data_block_uuid));
+        memcpy(pre_req_payload.metadata_uuid,
+               metadata_uuid.get_uuid().c_str(),
+               sizeof(pre_req_payload.metadata_uuid));
+        random_buf(pre_req_payload.user_nonce, sizeof(pre_req_payload.user_nonce));
+
+        cipher_len = AsymmetricEncryptionKeySet::get_box_seal_cipher_len(sizeof(pre_req_payload));
+        delete[] cipher;
+        cipher = new uint8_t[cipher_len]{0};
+
+        keySet.box_seal(cipher, cipher_len,
+                              reinterpret_cast<const uint8_t *>(&pre_req_payload),
+                              sizeof(pre_req_payload), dynamic_pk);
+
+        builder.Clear();
+        auto pre_req_cipher_obj = builder.CreateVector(cipher, cipher_len);
+        auto pre_req_msg = CreateDataReencryptionPreRequest(builder, pre_req_cipher_obj);
+        builder.Finish(pre_req_msg);
+
+        network_send_message_type(conn, MessageType_DATA_REENCRYPTION_PRE_REQUEST);
+        network_send(conn, builder.GetBufferPointer(), builder.GetSize());
+
+        // Process pre-response
+        if (network_read_message_type(conn) != MessageType_DATA_REENCRYPTION_PRE_RESPONSE)
+        {
+            LOGW("Unexpected message for Pre-response!");
+            return -1;
+        }
+        uint8_t pre_res_buf[READ_BUFFER_SIZE]{0};
+        network_read(conn, pre_res_buf, sizeof(pre_res_buf));
+        auto pre_res_msg = GetDataReencryptionPreResponse(pre_res_buf);
+        CiphertextDataReencryptionPreResponse pre_res_payload;
+        keySet.box_seal_open(reinterpret_cast<uint8_t *>(&pre_res_payload),
+                                   sizeof(pre_res_payload),
+                                   pre_res_msg->ciphertext()->data(),
+                                   pre_res_msg->ciphertext()->size());
+
+        if (pre_res_payload.type != CipherType::data_reencryption_pre_response)
+        {
+            LOGW("Wrong message type for pre response");
+            return -1;
+        }
+
+        if (memcmp(pre_res_payload.user_nonce,
+                   pre_req_payload.user_nonce,
+                   sizeof(pre_res_payload.user_nonce)) != 0)
+        {
+            LOGW("Incorrect user nonce responded");
+            return -1;
+        }
+
+        /**
+         * Construct the main request
+         */
+        CiphertextDataReencryptionRequest request_payload;
+        request_payload.type = CipherType::data_reencryption_request;
+        memcpy(&(request_payload.rekey_token),
+               reinterpret_cast<const uint8_t *>(&token),
+               sizeof(token));
+        random_buf(request_payload.noti_token, G_CHALLENGE_SIZE);
+        memcpy(request_payload.user_nonce,
+               pre_req_payload.user_nonce,
+               sizeof(request_payload.user_nonce));
+        memcpy(request_payload.storage_nonce,
+               pre_res_payload.storage_nonce,
+               sizeof(request_payload.storage_nonce));
+
+        LOGV("Rekey token size: %d", sizeof(request_payload.rekey_token));
+
+        cipher_len = AsymmetricEncryptionKeySet::get_box_easy_cipher_len(sizeof(request_payload));
+        delete[] cipher;
+        cipher = new uint8_t[cipher_len]{0};
+        uint8_t nonce[AsymmetricEncryptionKeySet::NONCE_SIZE]{0};
+
+        hexprint(dynamic_pk, AsymmetricEncryptionKeySet::FULL_PK_SIZE);
+        keySet.box_easy(cipher, cipher_len, reinterpret_cast<const uint8_t *>(&request_payload),
+                              sizeof(request_payload), nonce, dynamic_pk);
+
+        builder.Clear();
+        auto sieve_uuid_obj = builder.CreateString(sieve_data_uuid.get_uuid());
+        auto owner_pk_obj = builder.CreateVector(user_pubkey, sizeof(user_pubkey));
+        auto msg_nonce_obj = builder.CreateVector(nonce, sizeof(nonce));
+        auto cipher_obj = builder.CreateVector(cipher, cipher_len);
+        auto request_msg = CreateDataReencryptionRequest(builder, sieve_uuid_obj, owner_pk_obj, msg_nonce_obj, cipher_obj);
+        builder.Finish(request_msg);
+
+        network_send_message_type(conn, MessageType_DATA_REENCRYPTION_REQUEST);
+        network_send(conn, builder.GetBufferPointer(), builder.GetSize());
+
+        if (network_read_message_type(conn) != MessageType_DATA_REENCRYPTION_RESPONSE)
+        {
+            LOGW("Wrong reencryption response message type");
+            return -1;
+        }
+        uint8_t res_buf[READ_BUFFER_SIZE]{0};
+        network_read(conn, res_buf, sizeof(res_buf));
+        auto res_msg = GetDataReencryptionResponse(res_buf);
+
+        if (memcmp(res_msg->notification_token()->data(),
+                   request_payload.noti_token,
+                   sizeof(request_payload.noti_token)) != 0)
+        {
+            LOGW("Unmatched notification token!");
+            return -1;
+        }
+
+        delete[] cipher;
+        delete[] dynamic_pk;
+
+        return 0;
+    }
+
     int client_register_ip_kms_impl(const uint8_t *client_pubkey, size_t client_pubkey_len,
                                     const char *client_ip_load, const int client_port_in,
                                     const char *storage_ip_load, const int storage_port_in)
