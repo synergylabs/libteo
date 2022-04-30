@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
     {
         if (i > 0)
         {
-            std::cout << "Press ENTER to continue to the next iteration using cached key..." << std::endl;
+            std::cout << std::endl << "Press ENTER to continue to the next iteration using cached key..." << std::endl;
             std::string tmp;
             std::getline(std::cin, tmp);
         }
