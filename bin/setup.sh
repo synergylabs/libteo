@@ -165,7 +165,7 @@ build_dependency() {
   ### Install flatbuffers
   pushd libs/flatbuffers
 
-  cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+  cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DFLATBUFFERS_BUILD_TESTS=OFF
 
   totalm=$(free -m | awk '/^Mem:/{print $2}')
   if [[ $totalm -gt 4096 ]]; then
