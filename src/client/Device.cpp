@@ -348,7 +348,7 @@ namespace teo
         memcpy(admin_key, request_payload.admin_pubkey, sizeof(admin_key));
         memcpy(valid_device_proof, admin_reply_payload.device_proof, sizeof(valid_device_proof));
 
-        LOGV("Event: Initialization device accept admin\n");
+        LOGI("Event: Initialization device accept admin");
 
         delete[] device_info_ciphertext;
 
@@ -412,7 +412,7 @@ namespace teo
             return -1;
         }
 
-        LOGV("Event: Claim device device accept user");
+        LOGI("Event: Claim device device accept user");
 
         // Transfer ownership to new user
         set_owner(user_token_content.user_pubkey,
@@ -506,7 +506,8 @@ namespace teo
         // Either file_path or input_buf need to be set, not both
         assert(!(file_path.empty()) || (input_buf != nullptr));
 
-        if (owner_keys.size() == 0) {
+        if (owner_keys.size() == 0)
+        {
             LOGW("Empty owner lists, abort!");
             return -1;
         }
@@ -810,10 +811,10 @@ namespace teo
             SieveDataBlock sieveData;
             memcpy(sieveData.data_key, &key_share[0], sizeof(sieveData.data_key));
 
-// #if !defined(NDEBUG)
-//             LOGV("Original sieveData:");
-//             hexprint(sieveData.data_key, sizeof(sieveData.data_key), 1);
-// #endif
+            // #if !defined(NDEBUG)
+            //             LOGV("Original sieveData:");
+            //             hexprint(sieveData.data_key, sizeof(sieveData.data_key), 1);
+            // #endif
 
             decaf::SecureBuffer encrypted_sieve_data;
             owner_sieve_keys[owner_key_b64].encrypt(reinterpret_cast<uint8_t *>(&sieveData),
@@ -988,9 +989,8 @@ namespace teo
             *metadata_block_result = metadata_block_uuid;
         }
 
-#if !defined(NDEBUG)
-    LOGV("Successfully stored file into metadata UUID: %s", metadata_block_uuid.get_uuid().c_str());
-#endif
+        LOGI("Event: Successfully stored file into metadata UUID:");
+        LOGI("\t%s", metadata_block_uuid.get_uuid().c_str());
 
         return 0;
     }
@@ -1150,7 +1150,7 @@ namespace teo
             std::string owner_pk_b64 = base64_encode(owner_pk, AsymmetricEncryptionKeySet::FULL_PK_SIZE);
             if (!real_time_perm[owner_pk_b64])
             {
-                LOGV("Owner %s denied.", owner_pk_b64.c_str());
+                LOGI("Owner %s denied.", owner_pk_b64.c_str());
                 return false;
             }
         }

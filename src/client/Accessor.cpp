@@ -25,7 +25,8 @@ namespace teo
 
     int Accessor::request_access(const UUID &metadata_uuid, std::string orig_file_path,
                                  bool from_cache, bool exp_fail,
-                                 int *sieve_dec_timer, int *sym_dec_timer, int *download_timer)
+                                 int *sieve_dec_timer, int *sym_dec_timer, int *download_timer,
+                                 bool store_output)
     {
         int err = 0;
         int conn = 0;
@@ -117,7 +118,7 @@ namespace teo
                 // Process authorization response from data owner
                 if (network_read_message_type(owner_sockfd[owner_key_b64]) != MessageType_DATA_ACCESS_RESPONSE)
                 {
-                    LOGW("Unexpected data access response");
+                    LOGV("Unexpected data access response");
                     return -1;
                 }
 
@@ -245,6 +246,7 @@ namespace teo
             size_t len = 0;
         };
         size_t data_enc_len = 0;
+        size_t largest_cipher_chunk_size = G_DATA_BUF_SIZE;
 
         std::vector<DataEncBuf> data_enc_v;
         for (int i = 0; i < metadata_content->data_uuid()->size(); i++)
@@ -257,6 +259,7 @@ namespace teo
             err = download_file(conn, data_enc_uuid, &enc.buf, &enc.len);
             data_enc_v.push_back(enc);
             data_enc_len += enc.len;
+            largest_cipher_chunk_size = std::max(largest_cipher_chunk_size, enc.len);
         }
 
         // Contruct the full data
@@ -264,7 +267,7 @@ namespace teo
         int copied = 0;
         for (auto &enc : data_enc_v)
         {
-            memcpy(&data_enc_buf[copied], enc.buf, enc.len);
+            memcpy(&(data_enc_buf[copied]), enc.buf, enc.len);
             copied += enc.len;
             delete[] enc.buf;
         }
@@ -280,16 +283,18 @@ namespace teo
         uint8_t *data_buf = new uint8_t[data_enc_len]{};
 
         size_t processed = 0;
-        const size_t DATA_BUFFER_CIPHER_SIZE = SharedSecretKey::get_cipher_len(G_DATA_BUF_SIZE);
+        size_t plain_offset = 0;
+
+        // const size_t DATA_BUFFER_CIPHER_SIZE = SharedSecretKey::get_cipher_len(G_FILE_CHUNK_SIZE);
         while (processed < data_enc_len)
         {
-            size_t chunk_cipher_len = std::min(DATA_BUFFER_CIPHER_SIZE, (size_t)data_enc_len - processed);
+            size_t chunk_cipher_len = std::min(largest_cipher_chunk_size, (size_t)data_enc_len - processed);
 
             size_t chunk_plain_len = SharedSecretKey::get_plain_len(chunk_cipher_len);
 
             try
             {
-                data_key.decrypt(data_buf + processed, 0,
+                data_key.decrypt(data_buf + plain_offset, 0,
                                  data_enc_buf + processed,
                                  chunk_cipher_len);
             }
@@ -297,7 +302,7 @@ namespace teo
             {
                 if (exp_fail)
                 {
-                    LOGV("Expected failure. Experienced failure!! Nice.");
+                    LOGI("Expected failure. Experienced failure!! Nice.");
                     return 0;
                 }
                 else
@@ -306,6 +311,7 @@ namespace teo
                 }
             }
             processed += chunk_cipher_len;
+            plain_offset += chunk_plain_len;
         }
 
         if (!orig_file_path.empty())
@@ -320,10 +326,23 @@ namespace teo
             }
             else
             {
-                LOGV("Decryption process matches!");
+                LOGI("Decryption process matches!");
             }
 
             delete[] orig_buf;
+        }
+
+        if (store_output)
+        {
+            // Save decrypted data in temp directory
+            char filename[] = "/tmp/teo-data.XXXXXX"; // template for our file.
+            int fd = mkstemp(filename);             // Creates and opens a new temp file r/w.
+                                                    // Xs are replaced with a unique number.
+            if (fd == -1)
+                return 1;        // Check we managed to open the file.
+            write(fd, data_buf, plain_offset);
+            close(fd);
+            LOGI("Saved decrypted file at: %s", filename);
         }
 
         // Store key for cache and re-encryption tests

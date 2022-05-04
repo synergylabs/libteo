@@ -1,9 +1,11 @@
 #include <teo/teo.hpp>
-#include <fmt/format.h>
+
 #include <argparse/argparse.hpp>
-#include <string>
-#include <iostream>
 #include <curl/curl.h>
+#include <fmt/format.h>
+#include <iostream>
+#include <linenoise.h>
+#include <string>
 #include <thread>
 
 using std::cout;
@@ -24,15 +26,6 @@ int main(int argc, char *argv[])
         .action([](const std::string &value)
                 { return std::stoi(value); });
 
-    program.add_argument("--reps")
-        .help("Test repetitions.")
-        .default_value(1)
-        .action([](const std::string &value)
-                { return std::stoi(value); });
-
-    program.add_argument("metadata_UUID")
-        .help("UUID for request.");
-
     try
     {
         program.parse_args(argc, argv);
@@ -44,13 +37,8 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    std::string metadata_uuid = program.get("metadata_UUID");
-
     std::string storage_ip = program.get("storage_ip");
     int storage_port = program.get<int>("storage_port");
-
-    int reps = program.get<int>("--reps");
-    fmt::print("reps: {}\n", reps);
 
     fmt::print("\nRunning Accessor node...\n\n");
 
@@ -58,50 +46,123 @@ int main(int argc, char *argv[])
 
     teo::Accessor acc(storage_ip, storage_port);
 
-    teo::UUID metadataUUID(metadata_uuid);
+    char *line;
+    char *prgname = argv[0];
 
-    std::string res = "";
-    res += "sieve_dec_timer,sym_dec_timer,download_timer,total_timer\n";
+    std::string node_prefix = "teo-accessor";
+    std::string history = node_prefix + "-history.txt";
+    linenoiseHistoryLoad(history.c_str()); /* Load the history at startup */
 
-    for (int i = 0; i < reps; i++)
+    while ((line = linenoise((node_prefix + "> ").c_str())) != NULL)
     {
-        if (i > 0)
+        /* Do something with the string. */
+        if (line[0] != '\0')
         {
-            std::cout << std::endl << "Press ENTER to continue to the next iteration using cached key..." << std::endl;
-            std::string tmp;
-            std::getline(std::cin, tmp);
-        }
+#if !defined(NDEBUG)
+            printf("[debug] echo: '%s'\n", line);
+#endif
 
-        int sieve_dec_timer, sym_dec_timer, download_timer;
-        std::chrono::high_resolution_clock::time_point timer_start, timer_stop;
+            std::string full_line(line);
+            std::transform(full_line.begin(), full_line.end(), full_line.begin(),
+                           [](unsigned char c)
+                           { return std::tolower(c); });
+            std::istringstream iss(full_line);
+            std::vector<std::string> tokens{std::istream_iterator<std::string>{iss},
+                                            std::istream_iterator<std::string>{}};
 
-        timer_start = std::chrono::high_resolution_clock::now();
-
-        try
-        {
-            if (acc.request_access(metadataUUID, "", (i != 0), false,
-                                   &sieve_dec_timer, &sym_dec_timer, &download_timer) != 0)
+            bool print_usage = false;
+            assert(tokens.size() > 0);
+            if (tokens[0] == "exit")
             {
-                fmt::print("Access failed!! Exit prematurely!!!\n");
-                return -1;
+                return 0;
+            }
+            else if (tokens[0] == "help")
+            {
+                print_usage = true;
+            }
+            else if (tokens[0] == "request")
+            {
+                bool malformat = false;
+                if (tokens.size() == 2)
+                {
+                    teo::UUID metadataUUID(tokens[1]);
+                    try
+                    {
+                        if (acc.request_access(metadataUUID, "", false, false,
+                                               nullptr, nullptr, nullptr,
+                                               true) != 0)
+                        {
+                            fmt::print("Access failed!! Exit!!!\n");
+                            return -1;
+                        }
+                        else
+                        {
+                            fmt::print("Successfully decrypted data!\n");
+                        }
+                    }
+                    catch (...)
+                    {
+                        fmt::print("Access failed!! Exit!!!\n");
+                        return -1;
+                    }
+                }
+                else
+                {
+                    malformat = true;
+                }
+
+                if (malformat)
+                {
+                    fmt::print("Need to specify metadata UUID!\n");
+                }
+            }
+            else if (tokens[0] == "retryfromcache")
+            {
+                bool malformat = false;
+                if (tokens.size() == 2)
+                {
+                    teo::UUID metadataUUID(tokens[1]);
+                    try
+                    {
+                        if (acc.request_access(metadataUUID, "", true, false,
+                                               nullptr, nullptr, nullptr,
+                                               false) != 0)
+                        {
+                            fmt::print("Access failed!! Exit!!!\n");
+                            return -1;
+                        }
+                        else
+                        {
+                            fmt::print("Successfully decrypted data!\n");
+                        }
+                    }
+                    catch (...)
+                    {
+                        fmt::print("Access failed!! Exit!!!\n");
+                        return -1;
+                    }
+                }
+                else
+                {
+                    malformat = true;
+                }
+
+                if (malformat)
+                {
+                    fmt::print("Need to specify metadata UUID!\n");
+                }
             }
 
-            timer_stop = std::chrono::high_resolution_clock::now();
-            int total_timer = std::chrono::duration_cast<std::chrono::milliseconds>(timer_stop - timer_start).count();
+            if (print_usage)
+            {
+                // TODO: print usage
+            }
 
-            res += fmt::format("{},{},{},{}\n",
-                               sieve_dec_timer,
-                               sym_dec_timer,
-                               download_timer,
-                               total_timer);
+            linenoiseHistoryAdd(line);             /* Add to the history. */
+            linenoiseHistorySave(history.c_str()); /* Save the history on disk. */
         }
-        catch (...)
-        {
-            fmt::print("encounter error...\n");
-        }
+        free(line);
     }
-
-    fmt::print("Timer Result:\n{}", res);
 
     return 0;
 }
