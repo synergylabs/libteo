@@ -43,7 +43,7 @@ if (TEO_STANDALONE_APP)
         target_include_directories(teo PUBLIC ../include)
 
         # This depends on Decaf (for Ed448), libsodium, libconfig++, pthread, CryptoPP (static lib)
-        target_link_libraries(teo PRIVATE decaf sodium config++ pthread libcryptopp.a linenoise)
+        target_link_libraries(teo PRIVATE decaf sodium config++ pthread libcryptopp.a linenoise stdc++fs)
 
         # All users of this library will need at least C++11
         target_compile_features(teo PUBLIC cxx_std_17)

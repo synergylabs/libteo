@@ -17,7 +17,7 @@ namespace teo
         int sockfd = 0;
         if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
         {
-            LOGW("Socket creation error. errno: %d", errno);
+            LOGV("Socket creation error. errno: %d", errno);
             return -1;
         }
 
@@ -26,12 +26,12 @@ namespace teo
         device_addr.sin_port = htons(port);
         if (inet_pton(AF_INET, ip, &device_addr.sin_addr) <= 0)
         {
-            LOGW("Invalid address. Address not supported.");
+            LOGV("Invalid address. Address not supported.");
             return -1;
         }
         if (connect(sockfd, (struct sockaddr *)&device_addr, sizeof(device_addr)) < 0)
         {
-            LOGW("Connection failed.");
+            LOGV("Connection failed.");
             return -1;
         }
         return sockfd;
@@ -45,7 +45,7 @@ namespace teo
         size_t val_read = recv(sockfd, buf, buf_len, wait_all ? MSG_WAITALL : 0);
         if (val_read <= 0)
         {
-            LOGW("Error reading from the socket");
+            LOGV("Error reading from the socket");
             return -1;
         }
         chunk_read += val_read;

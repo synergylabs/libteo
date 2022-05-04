@@ -30,7 +30,8 @@ namespace teo
                            bool exp_fail = false,
                            int *sieve_dec_timer = nullptr,
                            int *sym_dec_timer = nullptr,
-                           int *download_timer = nullptr);
+                           int *download_timer = nullptr,
+                           bool store_output = false);
 
         int server_callback_handler(int connection) override { return 0; }
     };
