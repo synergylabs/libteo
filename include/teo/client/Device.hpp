@@ -23,6 +23,7 @@ namespace teo
         static const int DEVICE_THREAD_BEACON = 2;
         static const int DEVICE_THREAD_PROXIMITY_DETECT = 3;
 
+        const std::string BEACON_ENABLE_BLE_ADVERTISE = "sudo hciconfig hci0 leadv 3";
         const std::string BEACON_PREFIX = "sudo hcitool -i hci0 cmd 0x08 0x0008 1f 02 01 06 03 03 aa fe 17 16 aa fe 10 00";
         static const int DEFAULT_BLE_BEACON_MSG_HISTORY_LEN = 10; // max entries of epoches stored in history
         static const int DEFAULT_BLE_BEACON_EPOCH_INTERVAL = 20;  // in seconds, beacon refresh intervals
@@ -115,6 +116,8 @@ namespace teo
         bool real_time_access();
 
         std::string get_admin_key_b64();
+
+        void print_owner_info();
 
 #if defined(TEO_STANDALONE_APP) && defined(TEO_BLUETOOTH_BEACON)
         static const bool COMPILED_WITH_BLE = true;

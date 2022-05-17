@@ -282,6 +282,10 @@ int main(int argc, char **argv)
                     dev.enable_ble_beacon();
                 }
             }
+            else if (tokens[0] == "ownerinfo" || tokens[0] == "ownersinfo")
+            {
+                dev.print_owner_info();
+            }
 
             if (print_usage)
             {
