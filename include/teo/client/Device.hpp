@@ -23,18 +23,32 @@ namespace teo
         static const int DEVICE_THREAD_BEACON = 2;
         static const int DEVICE_THREAD_PROXIMITY_DETECT = 3;
 
+        const std::string BEACON_PREFIX = "sudo hcitool -i hci0 cmd 0x08 0x0008 1f 02 01 06 03 03 aa fe 17 16 aa fe 10 00";
+        static const int DEFAULT_BLE_BEACON_MSG_HISTORY_LEN = 10; // max entries of epoches stored in history
+        static const int DEFAULT_BLE_BEACON_EPOCH_INTERVAL = 20;  // in seconds, beacon refresh intervals
+        static const int DEFAULT_BLE_BEACON_TIMEOUT_LIM = 5;      // max number of epoches before an owner is inactive
+
         uint8_t valid_device_proof[AsymmetricEncryptionKeySet::SIGNATURE_SIZE]{0};
         SharedSecretKey setup_key;
         uint8_t admin_key[AsymmetricEncryptionKeySet::FULL_PK_SIZE]{};
+
+#if defined(TEO_STANDALONE_APP) && defined(TEO_BLUETOOTH_BEACON)
+        bool ble_beacon_enable = false; // master switch for BLE beacon mode
+        int ble_beacon_msg_history_len = DEFAULT_BLE_BEACON_MSG_HISTORY_LEN;
+        int ble_beacon_epoch_interval = DEFAULT_BLE_BEACON_EPOCH_INTERVAL;
+        int ble_beacon_timeout_lim = DEFAULT_BLE_BEACON_TIMEOUT_LIM;
+        std::deque<std::string> ble_beacon_msgs;
+        std::unordered_map<std::string, int> ble_beacon_owner_hb_count;
+
+        void ble_beacon_history_add(std::string &msg);
+        void ble_beacon_history_trim();
+#endif
 
         std::vector<const uint8_t *> owner_keys;
         std::unordered_map<std::string, bool> real_time_perm;
         int set_owner(uint8_t *pk, bool group_mode = false);
         void flush_owner_key();
         bool is_group();
-
-        std::deque<std::string> beacon_msgs;
-        std::unordered_map<std::string, int> owner_hb_count;
 
     public:
         Device();
@@ -44,10 +58,6 @@ namespace teo
                         int storage_port = default_storage_port);
 
         ~Device();
-
-        static void *beacon_wrapper(void *obj);
-
-        int launch_beacon();
 
         bool has_owner();
 
@@ -105,6 +115,21 @@ namespace teo
         bool real_time_access();
 
         std::string get_admin_key_b64();
+
+#if defined(TEO_STANDALONE_APP) && defined(TEO_BLUETOOTH_BEACON)
+        static const bool COMPILED_WITH_BLE = true;
+#else
+        static const bool COMPILED_WITH_BLE = false;
+#endif
+        static void *beacon_wrapper(void *obj);
+
+        int launch_beacon();
+
+        int enable_ble_beacon(int epoch_interval = DEFAULT_BLE_BEACON_EPOCH_INTERVAL,
+                              int timeout_lim = DEFAULT_BLE_BEACON_TIMEOUT_LIM,
+                              int history_len = DEFAULT_BLE_BEACON_MSG_HISTORY_LEN);
+
+        int disable_ble_beacon();
     };
 }
 

@@ -18,14 +18,17 @@
 #include <sys/socket.h>
 #include <thread>
 
+#if defined(TEO_STANDALONE_APP)
+#include <linenoise.h>
+#endif
+
 namespace teo
 {
     Device::Device()
     {
         set_server_port(default_device_port);
 
-        // We have to do this first since creating BLE Beacon requires sudo password
-#if defined(TEO_BLUETOOTH_BEACON)
+#if defined(TEO_STANDALONE_APP) && defined(TEO_BLUETOOTH_BEACON)
         pthread_create(get_thread(DEVICE_THREAD_BEACON), nullptr,
                        beacon_wrapper, this);
 #endif
@@ -50,112 +53,170 @@ namespace teo
         flush_owner_key();
     }
 
+#if defined(TEO_STANDALONE_APP) && defined(TEO_BLUETOOTH_BEACON)
     void *Device::beacon_wrapper(void *obj)
     {
         reinterpret_cast<Device *>(obj)->launch_beacon();
         return nullptr;
     }
 
-    int Device::launch_beacon()
+    void Device::ble_beacon_history_add(std::string &msg)
     {
-        const std::string BEACON_PREFIX = "sudo hcitool -i hci0 cmd 0x08 0x0008 1f 02 01 06 03 03 aa fe 17 16 aa fe 10 00";
+        ble_beacon_msgs.push_back(msg);
+        ble_beacon_history_trim();
+    }
 
-        std::string device_pubkey_b64 = base64_encode(get_keyset().get_full_pk());
-
-        while (true)
+    void Device::ble_beacon_history_trim()
+    {
+        while (ble_beacon_msgs.size() > ble_beacon_msg_history_len)
         {
-            std::stringstream ss;
-            ss << BEACON_PREFIX;
-
-            std::unique_lock<std::mutex> data_lock(g_data_mutex, std::defer_lock);
-            data_lock.lock();
-
-            // Update/refresh beacon nonces
-            std::string msg;
-            msg.reserve(G_BEACON_MSG_LEN);
-            msg = "TOTB";
-            for (int i = 0; i < G_BEACON_ID_LEN; i++)
-            {
-                msg.push_back(device_pubkey_b64[i]);
-            }
-            msg += random_string(G_BEACON_NONCE_LEN);
-            beacon_msgs.push_back(msg);
-
-            while (beacon_msgs.size() > G_BEACON_MSG_HISTORY)
-            {
-                beacon_msgs.pop_front();
-            }
-
-            for (auto c : beacon_msgs.back())
-            {
-                ss << " " << std::hex << (int)c;
-            }
-
-            // Proximity manager, remove outdated owners
-            if (G_BEACON_PROXIMITY_ENABLE)
-            {
-                for (auto const &it : owner_hb_count)
-                {
-                    if (it.second >= G_BEACON_PROXIMITY_TIMEOUT_LIM)
-                    {
-                        LOGD(("Removing owner due to proximity inactivity " + it.first).c_str());
-                        release_device_owner(it.first);
-                        owner_hb_count.erase(it.first);
-                    }
-                    else
-                    {
-                        owner_hb_count[it.first]++;
-                    }
-                }
-            }
-
-            data_lock.unlock();
-
-            system(ss.str().c_str());
-
-            std::this_thread::sleep_for(std::chrono::seconds(G_BEACON_REF_INT));
+            ble_beacon_msgs.pop_front();
         }
+    }
+
+    int Device::enable_ble_beacon(int epoch_interval, int timeout_lim, int history_len)
+    {
+        std::unique_lock<std::mutex> data_lock(g_data_mutex, std::defer_lock);
+        data_lock.lock();
+
+        ble_beacon_epoch_interval = epoch_interval;
+        ble_beacon_timeout_lim = timeout_lim;
+        ble_beacon_msg_history_len = history_len;
+
+        ble_beacon_enable = true;
+
+        data_lock.unlock();
 
         return 0;
     }
 
+    int Device::disable_ble_beacon()
+    {
+        std::unique_lock<std::mutex> data_lock(g_data_mutex, std::defer_lock);
+        data_lock.lock();
+
+        ble_beacon_enable = false;
+        ble_beacon_msgs.clear();
+        ble_beacon_owner_hb_count.clear();
+
+        data_lock.unlock();
+
+        return 0;
+    }
+
+    int Device::launch_beacon()
+    {
+        std::string device_pubkey_b64 = base64_encode(get_keyset().get_full_pk());
+
+        while (true)
+        {
+            // Periodically invoke BLE scan
+            std::this_thread::sleep_for(std::chrono::seconds(ble_beacon_epoch_interval));
+
+            // Pause Linenoise outputs
+            linenoisePause();
+
+            std::unique_lock<std::mutex> data_lock(g_data_mutex, std::defer_lock);
+            data_lock.lock();
+
+            if (ble_beacon_enable)
+            {
+                // Advertise beacon message
+                std::stringstream ss;
+                ss << BEACON_PREFIX;
+
+                // Update/refresh beacon nonces
+                std::string msg;
+                msg.reserve(G_BEACON_MSG_LEN);
+                msg = "TOTB";
+                for (int i = 0; i < G_BEACON_ID_LEN; i++)
+                {
+                    msg.push_back(device_pubkey_b64[i]);
+                }
+                msg += random_string(G_BEACON_NONCE_LEN);
+
+                ble_beacon_history_add(msg);
+
+                // Push heartbeat nonce to beacon message
+                for (auto c : msg)
+                {
+                    ss << " " << std::hex << (int)c;
+                }
+
+                // Proximity manager, remove outdated owners
+                for (auto const &it : ble_beacon_owner_hb_count)
+                {
+                    if (it.second >= ble_beacon_msg_history_len)
+                    {
+                        LOGV(("Removing owner due to proximity inactivity " + it.first).c_str());
+                        release_device_owner(it.first);
+                        ble_beacon_owner_hb_count.erase(it.first);
+                    }
+                    else
+                    {
+                        ble_beacon_owner_hb_count[it.first]++;
+                    }
+                }
+
+                system(ss.str().c_str());
+            }
+
+            data_lock.unlock();
+
+            // Resume Linenoise outputs
+            linenoiseResume();
+        }
+        return 0;
+    }
+#endif
+
     int Device::process_heartbeat_handler(int connection)
     {
+#if defined(TEO_STANDALONE_APP) && defined(TEO_BLUETOOTH_BEACON)
+        // If not using BLE Beacon, nop.
+        if (!ble_beacon_enable)
+        {
+            return 0;
+        }
+
         uint8_t heartbeat_buf[READ_BUFFER_SIZE]{};
         network_read(connection, heartbeat_buf, READ_BUFFER_SIZE);
         auto heartbeat_msg = GetUtilHeartbeat(heartbeat_buf);
 
-        std::string n_p = std::string(reinterpret_cast<const char *>(heartbeat_msg->proximity_nonce()->data()),
-                                      heartbeat_msg->proximity_nonce()->size());
-        auto owner_pk = heartbeat_msg->user_pubkey()->data();
-        std::string owner_pk_b64 = base64_encode(owner_pk, heartbeat_msg->user_pubkey()->size());
+        std::string nonce_ptr = std::string(reinterpret_cast<const char *>(heartbeat_msg->proximity_nonce()->data()),
+                                            heartbeat_msg->proximity_nonce()->size());
+        auto reply_owner_pk = heartbeat_msg->user_pubkey()->data();
+        std::string reply_owner_pk_b64 = base64_encode(reply_owner_pk, heartbeat_msg->user_pubkey()->size());
+
+        LOGV("Receive heartbeat message from %s \n\twith nonce %s", reply_owner_pk_b64.c_str(), nonce_ptr.c_str());
 
         std::unique_lock<std::mutex> data_lock(g_data_mutex, std::defer_lock);
         data_lock.lock();
 
         for (int i = 0; i < owner_keys.size(); i++)
         {
-            auto ok = owner_keys[i];
-            std::string ok_b64 = base64_encode(ok, AsymmetricEncryptionKeySet::FULL_PK_SIZE);
+            auto owner = owner_keys[i];
+            std::string owner_b64 = base64_encode(owner, AsymmetricEncryptionKeySet::FULL_PK_SIZE);
 
-            if (ok_b64 == owner_pk_b64)
+            if (owner_b64 == reply_owner_pk_b64)
             {
-                int i = 0;
-                for (auto rit = beacon_msgs.rbegin(); rit != beacon_msgs.rend(); rit++)
+                int msg_epoch = 0;
+                for (auto rit = ble_beacon_msgs.rbegin(); rit != ble_beacon_msgs.rend(); rit++)
                 {
-                    if (*rit == n_p)
+                    if (*rit == nonce_ptr)
                     {
-                        owner_hb_count[ok_b64] = std::min(owner_hb_count[ok_b64], i);
+                        ble_beacon_owner_hb_count[owner_b64] = std::min(ble_beacon_owner_hb_count[owner_b64], msg_epoch);
+                        break;
                     }
 
-                    i++;
+                    msg_epoch++;
                 }
                 break;
             }
         }
 
         data_lock.unlock();
-
+#endif
         return 0;
     }
 
@@ -249,10 +310,10 @@ namespace teo
 
         for (int i = 0; i < owner_keys.size(); i++)
         {
-            auto ok = owner_keys[i];
-            std::string ok_b64 = base64_encode(ok, AsymmetricEncryptionKeySet::FULL_PK_SIZE);
+            auto owner = owner_keys[i];
+            std::string owner_b64 = base64_encode(owner, AsymmetricEncryptionKeySet::FULL_PK_SIZE);
 
-            if (ok_b64 == owner_pk_b64)
+            if (owner_b64 == owner_pk_b64)
             {
                 owner_keys.erase(owner_keys.begin() + i);
                 real_time_perm.erase(real_time_perm.find(owner_pk_b64));
@@ -810,11 +871,6 @@ namespace teo
             auto key_share = data_key_shares[owner_key_b64];
             SieveDataBlock sieveData;
             memcpy(sieveData.data_key, &key_share[0], sizeof(sieveData.data_key));
-
-            // #if !defined(NDEBUG)
-            //             LOGV("Original sieveData:");
-            //             hexprint(sieveData.data_key, sizeof(sieveData.data_key), 1);
-            // #endif
 
             decaf::SecureBuffer encrypted_sieve_data;
             owner_sieve_keys[owner_key_b64].encrypt(reinterpret_cast<uint8_t *>(&sieveData),

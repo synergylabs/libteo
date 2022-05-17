@@ -269,6 +269,19 @@ int main(int argc, char **argv)
                     fmt::print("Need to specify storage ip and port!\nTry type 'help'\n");
                 }
             }
+            else if (tokens[0] == "beacon")
+            {
+                fmt::print("Enabling BLE Beaconing mode...\n");
+                if (!teo::Device::COMPILED_WITH_BLE)
+                {
+                    fmt::print("TEO library wasn't compiled with BLE Beacon CMake option!\n");
+                    fmt::print("You need to recompile it with flag -DTEO_BLUETOOTH_BEACON=ON!!\n");
+                }
+                else
+                {
+                    dev.enable_ble_beacon();
+                }
+            }
 
             if (print_usage)
             {

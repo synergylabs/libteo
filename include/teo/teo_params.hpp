@@ -26,15 +26,11 @@ namespace teo
     const int G_FILE_CHUNK_SIZE = 1048576; // 1MB
     const int G_MAX_FILE_SIZE = 209715200; // Max size: 200MB
 
+    // BLE Beacon parameters
     const int G_BEACON_PREFIX_LEN = 4;
     const int G_BEACON_ID_LEN = 0;
     const int G_BEACON_NONCE_LEN = 14;
     const int G_BEACON_MSG_LEN = 18; // = prefix_len + id_len + nonce_len
-    const int G_BEACON_MSG_HISTORY = 10;
-    const int G_BEACON_REF_INT = 20; // in seconds
-
-    const int G_BEACON_PROXIMITY_TIMEOUT_LIM = 5; // how many heartbeat messages can a device miss out before deemed outside
-    const bool G_BEACON_PROXIMITY_ENABLE = false;
 
     const int SOCKET_SEND_FLAGS = 0;
     const int READ_BUFFER_SIZE = G_DATA_BUF_SIZE;
