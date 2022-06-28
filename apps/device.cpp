@@ -13,6 +13,9 @@
 #include <arpa/inet.h>
 #include <string>
 #include <thread>
+#include <unistd.h>
+#include <vector>
+#include <stdlib.h>
 
 typedef std::chrono::high_resolution_clock Clock;
 
@@ -51,18 +54,27 @@ void *PrintDeviceDetail(void *dev_in, bool show_admin, bool show_user)
         {
             if (show_admin)
             {
-                fmt::print("\nQR Code link for **admin**: https://api.qrserver.com/v1/create-qr-code/?size={}x{}&data={}\n\n",
-                           QR_CODE_WIDTH, QR_CODE_WIDTH, admin_qr_output);
-                auto admin_json_content = nlohmann::json::parse(admin_qr_content);
-                fmt::print("Admin QR contents: {}\n", admin_json_content.dump(4));
+                // fmt::print("\nQR Code link for **admin**: https://api.qrserver.com/v1/create-qr-code/?size={}x{}&data={}\n\n",
+                //            QR_CODE_WIDTH, QR_CODE_WIDTH, admin_qr_output);
+                // auto admin_json_content = nlohmann::json::parse(admin_qr_content);
+                // fmt::print("Admin QR contents: {}\n", admin_json_content.dump(4));
+
+                // fmt::print("Admin QR raw contents: {}\n", admin_qr_content.c_str());
+
+                // Use local program to generate QR code
+                fmt::print("\nQR Code for **admin**: \n");
+                std::system(std::string("qr '" + admin_qr_content + "'").c_str());
             }
 
             if (show_user)
             {
-                fmt::print("\nQR Code link for __user__: https://api.qrserver.com/v1/create-qr-code/?size={}x{}&data={}\n\n",
-                           QR_CODE_WIDTH, QR_CODE_WIDTH, user_qr_output);
-                auto user_json_content = nlohmann::json::parse(user_qr_content);
-                fmt::print("User QR contents: {}\n", user_json_content.dump(4));
+                // fmt::print("\nQR Code link for __user__: https://api.qrserver.com/v1/create-qr-code/?size={}x{}&data={}\n\n",
+                //            QR_CODE_WIDTH, QR_CODE_WIDTH, user_qr_output);
+                // auto user_json_content = nlohmann::json::parse(user_qr_content);
+                // fmt::print("User QR contents: {}\n", user_json_content.dump(4));
+
+                fmt::print("\nQR Code for __user__: \n");
+                std::system(std::string("qr '" + user_qr_content + "'").c_str());
             }
 
             curl_free(admin_qr_output);

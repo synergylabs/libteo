@@ -182,6 +182,9 @@ build_dependency() {
   pushd include
   cp -R ../libs/flatbuffers/include/flatbuffers ./
   popd
+
+  ### Install QR code generator
+  pip3 install qrcode[pil]
 }
 
 post_install_setup() {
